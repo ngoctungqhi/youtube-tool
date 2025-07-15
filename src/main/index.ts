@@ -1,4 +1,12 @@
-import { app, shell, BrowserWindow, ipcMain, dialog, protocol, net } from 'electron'
+import {
+  app,
+  shell,
+  BrowserWindow,
+  ipcMain,
+  dialog,
+  protocol,
+  net,
+} from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -19,8 +27,8 @@ function createWindow(): void {
       sandbox: false,
       nodeIntegration: true,
       nodeIntegrationInWorker: true,
-      webSecurity: false
-    }
+      webSecurity: false,
+    },
   })
 
   mainWindow.on('ready-to-show', () => {
@@ -34,11 +42,11 @@ function createWindow(): void {
 
   // HMR for renderer base on electron-vite cli.
   // Load the remote URL for development or the local html file for production.
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
-  }
+  // if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+  //   mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+  // } else {
+  mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+  // }
 }
 
 protocol.registerSchemesAsPrivileged([
@@ -48,9 +56,9 @@ protocol.registerSchemesAsPrivileged([
       secure: true,
       supportFetchAPI: true,
       bypassCSP: true,
-      stream: true
-    }
-  }
+      stream: true,
+    },
+  },
 ])
 
 // This method will be called when Electron has finished
@@ -111,15 +119,18 @@ ipcMain.handle('generate-script', async (event, requestData) => {
       event.sender.send('script-progress', { type: 'progress', message })
     },
     onOutlineGenerated: (outline: string) => {
-      event.sender.send('script-progress', { type: 'outline', content: outline })
+      event.sender.send('script-progress', {
+        type: 'outline',
+        content: outline,
+      })
     },
     onSectionGenerated: (sectionNumber: number, content: string) => {
       event.sender.send('script-progress', {
         type: 'section',
         sectionNumber,
-        content
+        content,
       })
-    }
+    },
   }
 
   const generatedText = await GenerateScript(prompt, apiKey, progressCallbacks)
@@ -140,7 +151,7 @@ ipcMain.handle('generate-audio', async (event, requestData) => {
         type: 'audio-progress',
         chunkIndex,
         totalChunks,
-        message: `Processing audio chunk ${chunkIndex}/${totalChunks}`
+        message: `Processing audio chunk ${chunkIndex}/${totalChunks}`,
       })
     },
     onSectionComplete: (sectionIndex: number, outputPath: string) => {
@@ -148,9 +159,9 @@ ipcMain.handle('generate-audio', async (event, requestData) => {
         type: 'audio-progress',
         sectionIndex,
         outputPath,
-        message: 'Audio generation completed!'
+        message: 'Audio generation completed!',
       })
-    }
+    },
   }
 
   await GenerateAudio(content, apiKey, outputDir, audioProgressCallbacks)
@@ -160,12 +171,16 @@ ipcMain.handle('generate-audio', async (event, requestData) => {
 ipcMain.handle('generate-image', async (event, requestData) => {
   const { prompt, apiKey, outputPath } = requestData
 
-  const imageProgressCallback = (current: number, total: number, message: string): void => {
+  const imageProgressCallback = (
+    current: number,
+    total: number,
+    message: string,
+  ): void => {
     event.sender.send('image-progress', {
       type: 'image-progress',
       chunkIndex: current,
       totalChunks: total,
-      message
+      message,
     })
   }
 
@@ -176,7 +191,7 @@ ipcMain.handle('generate-image', async (event, requestData) => {
 ipcMain.handle('select-folder', async () => {
   const result = await dialog.showOpenDialog({
     properties: ['openDirectory'],
-    title: 'Select Output Folder'
+    title: 'Select Output Folder',
   })
 
   if (result.canceled) {

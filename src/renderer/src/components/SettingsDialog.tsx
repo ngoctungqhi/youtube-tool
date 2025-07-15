@@ -7,7 +7,7 @@ interface SettingsDialogProps {
 }
 
 interface SettingsData {
-  apiToken: string
+  apiTokens: string[]
   scriptPromptTemplate: string
   imagePromptTemplate: string
   audioOutputPath: string
@@ -16,11 +16,11 @@ interface SettingsData {
 
 const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose }) => {
   const [settings, setSettings] = useState<SettingsData>({
-    apiToken: '',
+    apiTokens: [],
     scriptPromptTemplate: '',
     imagePromptTemplate: '',
     audioOutputPath: '',
-    imageOutputPath: ''
+    imageOutputPath: '',
   })
 
   // Load settings from localStorage on component mount
@@ -40,15 +40,18 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose }) => {
         scriptPromptTemplate: '',
         imagePromptTemplate: '',
         audioOutputPath: '',
-        imageOutputPath: ''
+        imageOutputPath: '',
       }))
     }
   }, [])
 
-  const handleInputChange = (field: keyof SettingsData, value: string): void => {
+  const handleInputChange = (
+    field: keyof SettingsData,
+    value: string,
+  ): void => {
     setSettings((prev) => ({
       ...prev,
-      [field]: value
+      [field]: field === 'apiTokens' ? value.split('\n') : value,
     }))
   }
 
@@ -76,7 +79,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose }) => {
   }
 
   const handleSelectFolder = async (
-    field: 'audioOutputPath' | 'imageOutputPath'
+    field: 'audioOutputPath' | 'imageOutputPath',
   ): Promise<void> => {
     try {
       const selectedPath = await window.api.selectFolder()
@@ -106,13 +109,21 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose }) => {
         <div className="p-6 space-y-6">
           {/* AI API Token */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">AI API Token</label>
-            <input
-              type="password"
-              value={settings.apiToken}
-              onChange={(e) => handleInputChange('apiToken', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Enter your AI API token..."
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              AI API Token
+            </label>
+            <textarea
+              value={
+                settings.apiTokens && settings.apiTokens.length > 0
+                  ? settings.apiTokens.join('\n')
+                  : ''
+              }
+              onChange={(e) => handleInputChange('apiTokens', e.target.value)}
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-vertical"
+              placeholder="Enter your AI API token...
+
+You can enter multiple tokens on separate lines if needed."
             />
             <p className="text-xs text-gray-500 mt-1">
               This token will be used to authenticate with AI services
@@ -126,7 +137,9 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose }) => {
             </label>
             <textarea
               value={settings.scriptPromptTemplate}
-              onChange={(e) => handleInputChange('scriptPromptTemplate', e.target.value)}
+              onChange={(e) =>
+                handleInputChange('scriptPromptTemplate', e.target.value)
+              }
               rows={6}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-vertical"
               placeholder="Enter your script generation prompt template...
@@ -146,7 +159,9 @@ Duration: {duration} minutes"
             </label>
             <textarea
               value={settings.imagePromptTemplate}
-              onChange={(e) => handleInputChange('imagePromptTemplate', e.target.value)}
+              onChange={(e) =>
+                handleInputChange('imagePromptTemplate', e.target.value)
+              }
               rows={4}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-vertical"
               placeholder="Enter your image generation prompt template...
@@ -167,7 +182,9 @@ Include text overlay with: {title}"
               <input
                 type="text"
                 value={settings.audioOutputPath}
-                onChange={(e) => handleInputChange('audioOutputPath', e.target.value)}
+                onChange={(e) =>
+                  handleInputChange('audioOutputPath', e.target.value)
+                }
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Enter the path where audio files will be saved..."
               />
@@ -194,7 +211,9 @@ Include text overlay with: {title}"
               <input
                 type="text"
                 value={settings.imageOutputPath}
-                onChange={(e) => handleInputChange('imageOutputPath', e.target.value)}
+                onChange={(e) =>
+                  handleInputChange('imageOutputPath', e.target.value)
+                }
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Enter the path where image files will be saved..."
               />

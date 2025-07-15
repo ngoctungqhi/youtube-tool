@@ -9,25 +9,25 @@ interface GenerationProgress {
 export const GenerateScript = async (
   prompt: string,
   apiKey: string,
-  callbacks?: GenerationProgress
+  callbacks?: GenerationProgress,
 ): Promise<string> => {
   try {
     const ai = new GoogleGenAI({
-      apiKey
+      apiKey,
     })
 
     const tools = [
       {
-        googleSearch: {}
-      }
+        googleSearch: {},
+      },
     ]
 
     const config = {
       thinkingConfig: {
-        thinkingBudget: -1
+        thinkingBudget: -1,
       },
       tools,
-      responseMimeType: 'text/plain'
+      responseMimeType: 'text/plain',
     }
 
     const outlineResponse = await ai.models.generateContent({
@@ -36,9 +36,9 @@ export const GenerateScript = async (
       contents: [
         {
           role: 'user',
-          parts: [{ text: prompt }]
-        }
-      ]
+          parts: [{ text: prompt }],
+        },
+      ],
     })
 
     if (!outlineResponse.candidates?.[0]?.content?.parts?.[0]?.text) {
@@ -53,12 +53,12 @@ export const GenerateScript = async (
     const conversationHistory = [
       {
         role: 'user' as const,
-        parts: [{ text: prompt }]
+        parts: [{ text: prompt }],
       },
       {
         role: 'model' as const,
-        parts: [{ text: outline }]
-      }
+        parts: [{ text: outline }],
+      },
     ]
 
     let fullScript = ''
@@ -69,7 +69,7 @@ export const GenerateScript = async (
       // Add CONTINUE to conversation
       conversationHistory.push({
         role: 'user',
-        parts: [{ text: 'CONTINUE' }]
+        parts: [{ text: 'CONTINUE' }],
       })
 
       try {
@@ -79,20 +79,21 @@ export const GenerateScript = async (
           config: {
             ...config,
             thinkingConfig: {
-              thinkingBudget: -1
-            }
+              thinkingBudget: -1,
+            },
           },
-          contents: conversationHistory
+          contents: conversationHistory,
         })
 
         if (sectionResponse.candidates?.[0]?.content?.parts?.[0]?.text) {
-          const sectionContent = sectionResponse.candidates[0].content.parts[0].text.trim()
+          const sectionContent =
+            sectionResponse.candidates[0].content.parts[0].text.trim()
 
           // Add to full script and conversation history
           fullScript += sectionContent + '\n\n\n'
           conversationHistory.push({
             role: 'model',
-            parts: [{ text: sectionContent }]
+            parts: [{ text: sectionContent }],
           })
 
           callbacks?.onSectionGenerated?.(sectionCount, sectionContent)
@@ -102,7 +103,9 @@ export const GenerateScript = async (
           await new Promise((resolve) => setTimeout(resolve, 1000))
         } else {
           console.log(`Failed to generate Section ${sectionCount}. Retrying...`)
-          callbacks?.onProgress?.(`Failed to generate Section ${sectionCount}. Retrying...`)
+          callbacks?.onProgress?.(
+            `Failed to generate Section ${sectionCount}. Retrying...`,
+          )
 
           // Remove the failed CONTINUE from history and try again
           conversationHistory.pop()
@@ -110,7 +113,9 @@ export const GenerateScript = async (
         }
       } catch (error) {
         console.error(`Error generating Section ${sectionCount}:`, error)
-        callbacks?.onProgress?.(`Error generating Section ${sectionCount}. Retrying...`)
+        callbacks?.onProgress?.(
+          `Error generating Section ${sectionCount}. Retrying...`,
+        )
 
         // Remove the failed CONTINUE from history and try again
         conversationHistory.pop()
@@ -120,7 +125,9 @@ export const GenerateScript = async (
 
     // Save the complete script to file
     try {
-      callbacks?.onProgress?.(`Script saved with ${sectionCount - 1} sections completed.`)
+      callbacks?.onProgress?.(
+        `Script saved with ${sectionCount - 1} sections completed.`,
+      )
       return fullScript.trim()
     } catch (error) {
       console.warn('Could not save script to file:', error)
@@ -129,9 +136,11 @@ export const GenerateScript = async (
     return fullScript.trim()
   } catch (error) {
     console.error('Error in automated script generation:', error)
-    callbacks?.onProgress?.(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    callbacks?.onProgress?.(
+      `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    )
     throw new Error(
-      `Script generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+      `Script generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
     )
   }
 }

@@ -3,14 +3,17 @@ import * as fs from 'fs'
 import { writeFile } from 'fs/promises'
 import * as path from 'path'
 
-export const GenerateImagePrompts = async (prompt: string, apiKey: string): Promise<string[]> => {
+export const GenerateImagePrompts = async (
+  prompt: string,
+  apiKey: string,
+): Promise<string[]> => {
   try {
     const ai = new GoogleGenAI({
-      apiKey
+      apiKey,
     })
 
     const config = {
-      responseMimeType: 'text/plain'
+      responseMimeType: 'text/plain',
     }
 
     const response = await ai.models.generateContent({
@@ -19,9 +22,9 @@ export const GenerateImagePrompts = async (prompt: string, apiKey: string): Prom
       contents: [
         {
           role: 'user',
-          parts: [{ text: prompt }]
-        }
-      ]
+          parts: [{ text: prompt }],
+        },
+      ],
     })
 
     if (!response.candidates?.[0]?.content?.parts?.[0]?.text) {
@@ -47,7 +50,7 @@ export const GenerateImage = async (
   prompt: string,
   apiKey: string,
   outputPath: string = 'images',
-  progressCallback?: (current: number, total: number, message: string) => void
+  progressCallback?: (current: number, total: number, message: string) => void,
 ): Promise<string[]> => {
   try {
     // Step 1: Generate image prompts
@@ -55,7 +58,7 @@ export const GenerateImage = async (
 
     // Step 2: Generate images from prompts
     const ai = new GoogleGenAI({
-      apiKey
+      apiKey,
     })
 
     // Create output directory if it doesn't exist
@@ -66,13 +69,17 @@ export const GenerateImage = async (
 
     progressCallback?.(0, imagePrompts.length, 'Starting image generation...')
 
-    for (let promptIndex = 0; promptIndex < imagePrompts.length; promptIndex++) {
+    for (
+      let promptIndex = 0;
+      promptIndex < imagePrompts.length;
+      promptIndex++
+    ) {
       const imagePrompt = imagePrompts[promptIndex]
 
       progressCallback?.(
         promptIndex,
         imagePrompts.length,
-        `Generating images for prompt ${promptIndex + 1}/${imagePrompts.length}`
+        `Generating images for prompt ${promptIndex + 1}/${imagePrompts.length}`,
       )
 
       try {
@@ -83,8 +90,8 @@ export const GenerateImage = async (
             numberOfImages: 4,
             outputMimeType: 'image/jpeg',
             aspectRatio: '16:9',
-            personGeneration: PersonGeneration.ALLOW_ADULT
-          }
+            personGeneration: PersonGeneration.ALLOW_ADULT,
+          },
         })
 
         if (!result.generatedImages || result.generatedImages.length === 0) {
@@ -92,10 +99,20 @@ export const GenerateImage = async (
           continue
         }
 
-        for (let imgIndex = 0; imgIndex < result.generatedImages.length; imgIndex++) {
+        for (
+          let imgIndex = 0;
+          imgIndex < result.generatedImages.length;
+          imgIndex++
+        ) {
           const generatedImage = result.generatedImages[imgIndex]
-          if (!generatedImage || !generatedImage.image || !generatedImage.image.imageBytes) {
-            console.log(`No valid image data for prompt ${promptIndex}, image ${imgIndex + 1}`)
+          if (
+            !generatedImage ||
+            !generatedImage.image ||
+            !generatedImage.image.imageBytes
+          ) {
+            console.log(
+              `No valid image data for prompt ${promptIndex}, image ${imgIndex + 1}`,
+            )
             continue
           }
 
@@ -109,10 +126,15 @@ export const GenerateImage = async (
           await writeFile(filePath, buffer)
 
           savedImagePaths.push(filePath)
-          console.log(`Image saved as ${filePath} (Prompt ${promptIndex}, Image ${imgIndex + 1})`)
+          console.log(
+            `Image saved as ${filePath} (Prompt ${promptIndex}, Image ${imgIndex + 1})`,
+          )
         }
       } catch (imageError) {
-        console.error(`Error generating image for prompt "${imagePrompt}":`, imageError)
+        console.error(
+          `Error generating image for prompt "${imagePrompt}":`,
+          imageError,
+        )
         // Continue with other prompts even if one fails
       }
     }
@@ -120,7 +142,11 @@ export const GenerateImage = async (
       throw new Error('No images were successfully generated.')
     }
 
-    progressCallback?.(imagePrompts.length, imagePrompts.length, 'Image generation completed!')
+    progressCallback?.(
+      imagePrompts.length,
+      imagePrompts.length,
+      'Image generation completed!',
+    )
 
     return savedImagePaths
   } catch (error) {

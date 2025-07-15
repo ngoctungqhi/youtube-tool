@@ -16,7 +16,7 @@ interface ScriptGeneratorProps {
 }
 
 interface SettingsData {
-  apiToken: string
+  apiTokens: string[]
   scriptPromptTemplate: string
   imagePromptTemplate: string
   audioOutputPath: string
@@ -32,7 +32,9 @@ interface ProgressState {
   imageProgress: { current: number; total: number; message: string }
 }
 
-const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({ onOpenSettings }) => {
+const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({
+  onOpenSettings,
+}) => {
   const [topic, setTopic] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [audioFiles, setAudioFiles] = useState<string[]>([])
@@ -43,14 +45,17 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({ onOpenSettings }) => 
     sections: [],
     currentSection: 0,
     audioProgress: { current: 0, total: 0, message: '' },
-    imageProgress: { current: 0, total: 0, message: '' }
+    imageProgress: { current: 0, total: 0, message: '' },
   })
   useEffect(() => {
     // Listen for progress events from the main process
     const handleProgress = (_event: unknown, data: ProgressData): void => {
       switch (data.type) {
         case 'progress':
-          setProgressState((prev) => ({ ...prev, currentMessage: data.message || '' }))
+          setProgressState((prev) => ({
+            ...prev,
+            currentMessage: data.message || '',
+          }))
           break
         case 'outline':
           setProgressState((prev) => ({ ...prev, outline: data.content || '' }))
@@ -60,9 +65,9 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({ onOpenSettings }) => 
             ...prev,
             sections: [
               ...prev.sections,
-              { number: data.sectionNumber || 0, content: data.content || '' }
+              { number: data.sectionNumber || 0, content: data.content || '' },
             ],
-            currentSection: data.sectionNumber || 0
+            currentSection: data.sectionNumber || 0,
           }))
           break
         case 'audio-progress':
@@ -71,8 +76,8 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({ onOpenSettings }) => 
             audioProgress: {
               current: data.chunkIndex || 0,
               total: data.totalChunks || 0,
-              message: data.message || ''
-            }
+              message: data.message || '',
+            },
           }))
           break
         case 'image-progress':
@@ -81,8 +86,8 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({ onOpenSettings }) => 
             imageProgress: {
               current: data.chunkIndex || 0,
               total: data.totalChunks || 0,
-              message: data.message || ''
-            }
+              message: data.message || '',
+            },
           }))
           break
       }
@@ -108,7 +113,7 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({ onOpenSettings }) => 
       try {
         const audioPaths = await window.electron.ipcRenderer.invoke(
           'check-audio-file',
-          settings.audioOutputPath
+          settings.audioOutputPath,
         )
         setAudioFiles(audioPaths)
       } catch (error) {
@@ -122,7 +127,7 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({ onOpenSettings }) => 
       try {
         const imagePaths = await window.electron.ipcRenderer.invoke(
           'check-image-files',
-          settings.imageOutputPath
+          settings.imageOutputPath,
         )
         setImageFiles(imagePaths)
       } catch (error) {
@@ -147,11 +152,11 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({ onOpenSettings }) => 
       }
     }
     return {
-      apiToken: '',
+      apiTokens: [],
       scriptPromptTemplate: '',
       imagePromptTemplate: '',
       audioOutputPath: '',
-      imageOutputPath: ''
+      imageOutputPath: '',
     }
   }
 
@@ -162,7 +167,7 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({ onOpenSettings }) => 
     }
 
     const settings = getSettings()
-    if (!settings.apiToken) {
+    if (settings.apiTokens.length === 0) {
       alert('Please set your API token in settings')
       onOpenSettings()
       return
@@ -175,16 +180,19 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({ onOpenSettings }) => 
       sections: [],
       currentSection: 0,
       audioProgress: { current: 0, total: 0, message: '' },
-      imageProgress: { current: 0, total: 0, message: '' }
+      imageProgress: { current: 0, total: 0, message: '' },
     })
 
     try {
       // Replace placeholders
       const prompt = settings.scriptPromptTemplate.replace(/\[TOPIC\]/g, topic)
-      const script = await window.electron.ipcRenderer.invoke('generate-script', {
-        prompt,
-        apiKey: settings.apiToken
-      })
+      const script = await window.electron.ipcRenderer.invoke(
+        'generate-script',
+        {
+          prompt,
+          apiKey: settings.apiTokens[0], // Use the first token for simplicity
+        },
+      )
 
       const splitScripts = script.split('\n\n\n')
 
@@ -195,33 +203,47 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({ onOpenSettings }) => 
         audioProgress: {
           current: 0,
           total: totalSections,
-          message: 'Starting audio generation...'
+          message: 'Starting audio generation...',
         },
-        imageProgress: { current: 0, total: totalSections, message: 'Starting image generation...' }
+        imageProgress: {
+          current: 0,
+          total: totalSections,
+          message: 'Starting image generation...',
+        },
       }))
 
       // Process all sections in parallel for better performance
       const sectionPromises = splitScripts.map(async (section, index) => {
         // Remove Section x from section content
-        const cleanedSection = section.replace(/^Section\s+\d+\s*\n?/i, '').trim()
+        const cleanedSection = section
+          .replace(/^Section\s+\d+\s*\n?/i, '')
+          .trim()
 
         // Run image and audio generation in parallel for each section
         const [,] = await Promise.all([
           generateImage(cleanedSection, index + 1, totalSections),
-          generateAudio(cleanedSection, index + 1, totalSections)
+          generateAudio(cleanedSection, index + 1, totalSections),
         ])
       })
 
       // Wait for all sections to complete
       await Promise.all(sectionPromises)
-      setProgressState((prev) => ({ ...prev, currentMessage: 'Script generation completed!' }))
+      setProgressState((prev) => ({
+        ...prev,
+        currentMessage: 'Script generation completed!',
+      }))
 
       // Final refresh to ensure all files are displayed
       await refreshFiles()
     } catch (error) {
       console.error('Script generation error:', error)
-      alert(`Error generating script: ${error instanceof Error ? error.message : 'Unknown error'}`)
-      setProgressState((prev) => ({ ...prev, currentMessage: 'Error occurred during generation' }))
+      alert(
+        `Error generating script: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      )
+      setProgressState((prev) => ({
+        ...prev,
+        currentMessage: 'Error occurred during generation',
+      }))
     } finally {
       setIsGenerating(false)
     }
@@ -229,10 +251,10 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({ onOpenSettings }) => 
   const generateAudio = async (
     content: string,
     sectionIndex?: number,
-    totalSections?: number
+    totalSections?: number,
   ): Promise<void> => {
     const settings = getSettings()
-    if (!settings.apiToken) {
+    if (settings.apiTokens.length === 0) {
       alert('Please set your API token in settings')
       onOpenSettings()
       return
@@ -246,15 +268,15 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({ onOpenSettings }) => 
           audioProgress: {
             current: sectionIndex,
             total: totalSections,
-            message: `Generating audio for section ${sectionIndex}/${totalSections}`
-          }
+            message: `Generating audio for section ${sectionIndex}/${totalSections}`,
+          },
         }))
       }
 
       await window.electron.ipcRenderer.invoke('generate-audio', {
         content,
-        apiKey: settings.apiToken,
-        outputDir: settings.audioOutputPath
+        apiKey: settings.apiTokens[0],
+        outputDir: settings.audioOutputPath,
       })
 
       // Refresh audio files display after successful generation
@@ -267,22 +289,24 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({ onOpenSettings }) => 
           audioProgress: {
             current: sectionIndex,
             total: totalSections,
-            message: `Audio section ${sectionIndex}/${totalSections} completed`
-          }
+            message: `Audio section ${sectionIndex}/${totalSections} completed`,
+          },
         }))
       }
     } catch (error) {
       console.error('Audio generation error:', error)
-      alert(`Error generating audio: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      alert(
+        `Error generating audio: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      )
     }
   }
   const generateImage = async (
     content: string,
     sectionIndex?: number,
-    totalSections?: number
+    totalSections?: number,
   ): Promise<void> => {
     const settings = getSettings()
-    if (!settings.apiToken) {
+    if (settings.apiTokens.length === 0) {
       alert('Please set your API token in settings')
       onOpenSettings()
       return
@@ -302,16 +326,22 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({ onOpenSettings }) => 
           imageProgress: {
             current: sectionIndex,
             total: totalSections,
-            message: `Generating images for section ${sectionIndex}/${totalSections}`
-          }
+            message: `Generating images for section ${sectionIndex}/${totalSections}`,
+          },
         }))
       }
 
-      const prompt = settings.imagePromptTemplate.replace(/\[Replace Script\]/g, content.trim())
+      const prompt = settings.imagePromptTemplate.replace(
+        /\[Replace Script\]/g,
+        content.trim(),
+      )
       await window.electron.ipcRenderer.invoke('generate-image', {
         prompt,
-        apiKey: settings.apiToken,
-        outputPath: settings.imageOutputPath
+        apiKey:
+          settings.apiTokens.length > 1
+            ? settings.apiTokens[1]
+            : settings.apiTokens[0],
+        outputPath: settings.imageOutputPath,
       })
 
       // Refresh image files display after successful generation
@@ -324,13 +354,15 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({ onOpenSettings }) => 
           imageProgress: {
             current: sectionIndex,
             total: totalSections,
-            message: `Images for section ${sectionIndex}/${totalSections} completed`
-          }
+            message: `Images for section ${sectionIndex}/${totalSections} completed`,
+          },
         }))
       }
     } catch (error) {
       console.error('Image generation error:', error)
-      alert(`Error generating images: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      alert(
+        `Error generating images: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      )
     }
   }
 
@@ -338,7 +370,9 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({ onOpenSettings }) => 
     <div className="flex flex-col h-screen w-screen p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl text-blue-600 font-bold">YouTube Content Generator</h1>
+        <h1 className="text-3xl text-blue-600 font-bold">
+          YouTube Content Generator
+        </h1>
         <button
           onClick={onOpenSettings}
           className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
@@ -378,16 +412,22 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({ onOpenSettings }) => 
           <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
             <div className="flex items-center gap-3 mb-3">
               <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
-              <span className="font-medium text-blue-800">Generating Script</span>
+              <span className="font-medium text-blue-800">
+                Generating Script
+              </span>
             </div>
             {progressState.currentMessage && (
-              <p className="text-sm text-blue-600 mb-3">{progressState.currentMessage}</p>
+              <p className="text-sm text-blue-600 mb-3">
+                {progressState.currentMessage}
+              </p>
             )}
             {progressState.outline && (
               <div className="mb-4">
                 <div className="flex items-center gap-2 mb-2">
                   <CheckCircle className="w-4 h-4 text-green-500" />
-                  <span className="text-sm font-medium text-green-700">Outline Generated</span>
+                  <span className="text-sm font-medium text-green-700">
+                    Outline Generated
+                  </span>
                 </div>
               </div>
             )}{' '}
@@ -402,7 +442,9 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({ onOpenSettings }) => 
                 <div className="w-full bg-gray-200 rounded-full h-2">
                   <div
                     className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${(progressState.sections.length / 15) * 100}%` }}
+                    style={{
+                      width: `${(progressState.sections.length / 15) * 100}%`,
+                    }}
                   ></div>
                 </div>
               </div>
@@ -413,7 +455,8 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({ onOpenSettings }) => 
                 <div className="flex items-center gap-2 mb-2">
                   <Clock className="w-4 h-4 text-purple-500" />
                   <span className="text-sm font-medium text-purple-700">
-                    Audio: {progressState.audioProgress.current}/{progressState.audioProgress.total}
+                    Audio: {progressState.audioProgress.current}/
+                    {progressState.audioProgress.total}
                   </span>
                 </div>
                 {progressState.audioProgress.message && (
@@ -425,7 +468,7 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({ onOpenSettings }) => 
                   <div
                     className="bg-purple-600 h-2 rounded-full transition-all duration-300"
                     style={{
-                      width: `${(progressState.audioProgress.current / progressState.audioProgress.total) * 100}%`
+                      width: `${(progressState.audioProgress.current / progressState.audioProgress.total) * 100}%`,
                     }}
                   ></div>
                 </div>
@@ -450,7 +493,7 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({ onOpenSettings }) => 
                   <div
                     className="bg-green-600 h-2 rounded-full transition-all duration-300"
                     style={{
-                      width: `${(progressState.imageProgress.current / progressState.imageProgress.total) * 100}%`
+                      width: `${(progressState.imageProgress.current / progressState.imageProgress.total) * 100}%`,
                     }}
                   ></div>
                 </div>
@@ -462,7 +505,9 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({ onOpenSettings }) => 
         <div className="flex gap-3 overflow-hidden h-full">
           {/* Audio File Display */}
           <div className="w-1/3 flex flex-col">
-            <h3 className="text-lg font-semibold text-gray-800 mb-2">Generated Audio</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mb-2">
+              Generated Audio
+            </h3>
             {isGenerating ? (
               <div className="text-center text-gray-500">
                 <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
@@ -484,7 +529,9 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({ onOpenSettings }) => 
 
           {/* Image File Display */}
           <div className="flex flex-col flex-1">
-            <h3 className="text-lg font-semibold text-gray-800 mb-2">Generated Images</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mb-2">
+              Generated Images
+            </h3>
             {isGenerating ? (
               <div className="text-center text-gray-500">
                 <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />

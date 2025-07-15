@@ -15,7 +15,10 @@ interface WavConversionOptions {
   bitsPerSample: number
 }
 
-const saveBinaryFile = async (fileName: string, content: Buffer): Promise<void> => {
+const saveBinaryFile = async (
+  fileName: string,
+  content: Buffer,
+): Promise<void> => {
   try {
     // Ensure directory exists
     const dir = dirname(fileName)
@@ -31,7 +34,10 @@ const saveBinaryFile = async (fileName: string, content: Buffer): Promise<void> 
   }
 }
 
-const splitContentIntoChunks = (content: string, maxChunkSize: number = 3000): string[] => {
+const splitContentIntoChunks = (
+  content: string,
+  maxChunkSize: number = 3000,
+): string[] => {
   // Split by sentences (periods, exclamation marks, question marks)
   const sentences = content.trim().split(/(?<=[.!?])\s+/)
 
@@ -56,7 +62,10 @@ const splitContentIntoChunks = (content: string, maxChunkSize: number = 3000): s
   return chunks
 }
 
-const joinWavFiles = async (filePaths: string[], outputPath: string): Promise<void> => {
+const joinWavFiles = async (
+  filePaths: string[],
+  outputPath: string,
+): Promise<void> => {
   if (filePaths.length === 0) return
 
   const fs = await import('fs/promises')
@@ -106,7 +115,7 @@ const extractWavFormat = (wavBuffer: Buffer): WavConversionOptions => {
   return {
     numChannels,
     sampleRate,
-    bitsPerSample
+    bitsPerSample,
   }
 }
 
@@ -127,7 +136,7 @@ const parseMimeType = (mimeType: string): WavConversionOptions => {
   const options: WavConversionOptions = {
     numChannels: 1,
     sampleRate: 24000,
-    bitsPerSample: 16
+    bitsPerSample: 16,
   }
 
   if (format && format.startsWith('L')) {
@@ -150,7 +159,10 @@ const parseMimeType = (mimeType: string): WavConversionOptions => {
   return options
 }
 
-const createWavHeader = (dataLength: number, options: WavConversionOptions): Buffer => {
+const createWavHeader = (
+  dataLength: number,
+  options: WavConversionOptions,
+): Buffer => {
   const { numChannels, sampleRate, bitsPerSample } = options
 
   // http://soundfile.sapp.org/doc/WaveFormat
@@ -187,7 +199,7 @@ const getFileExtension = (mimeType: string): string | null => {
     'audio/ogg': 'ogg',
     'audio/flac': 'flac',
     'audio/aac': 'aac',
-    'audio/webm': 'webm'
+    'audio/webm': 'webm',
   }
 
   return mimeToExt[mimeType.toLowerCase()] || null
@@ -198,10 +210,10 @@ const generateChunkAudio = async (
   sectionIndex: number,
   chunkIndex: number,
   apiKey: string,
-  outputDir: string
+  outputDir: string,
 ): Promise<string[]> => {
   const ai = new GoogleGenAI({
-    apiKey
+    apiKey,
   })
   const config = {
     temperature: 1,
@@ -209,10 +221,10 @@ const generateChunkAudio = async (
     speechConfig: {
       voiceConfig: {
         prebuiltVoiceConfig: {
-          voiceName: 'Enceladus'
-        }
-      }
-    }
+          voiceName: 'Enceladus',
+        },
+      },
+    },
   }
 
   // Use the model name from your working example
@@ -222,10 +234,10 @@ const generateChunkAudio = async (
       role: 'user' as const,
       parts: [
         {
-          text: content
-        }
-      ]
-    }
+          text: content,
+        },
+      ],
+    },
   ]
 
   const chunkFiles: string[] = []
@@ -234,11 +246,15 @@ const generateChunkAudio = async (
   const response = await ai.models.generateContentStream({
     model,
     config,
-    contents
+    contents,
   })
 
   for await (const chunk of response) {
-    if (!chunk.candidates || !chunk.candidates[0].content || !chunk.candidates[0].content.parts) {
+    if (
+      !chunk.candidates ||
+      !chunk.candidates[0].content ||
+      !chunk.candidates[0].content.parts
+    ) {
       continue
     }
 
@@ -250,7 +266,10 @@ const generateChunkAudio = async (
       let fileExtension = getFileExtension(inlineData.mimeType || '')
       if (!fileExtension) {
         fileExtension = 'wav'
-        dataBuffer = convertToWav(inlineData.data || '', inlineData.mimeType || '') as Buffer
+        dataBuffer = convertToWav(
+          inlineData.data || '',
+          inlineData.mimeType || '',
+        ) as Buffer
       }
 
       const filePath = join(outputDir, `${fileName}.${fileExtension}`)
@@ -268,7 +287,7 @@ export const GenerateAudio = async (
   content: string,
   apiKey: string,
   outputDir: string,
-  callbacks?: AudioGenerationCallbacks
+  callbacks?: AudioGenerationCallbacks,
 ): Promise<void> => {
   try {
     callbacks?.onProgress?.('Starting audio generation...')
@@ -281,11 +300,19 @@ export const GenerateAudio = async (
 
     // Generate audio for each chunk
     for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
-      callbacks?.onProgress?.(`Generating audio for chunk ${chunkIndex + 1}/${chunks.length}`)
+      callbacks?.onProgress?.(
+        `Generating audio for chunk ${chunkIndex + 1}/${chunks.length}`,
+      )
       callbacks?.onChunkGenerated?.(chunkIndex + 1, chunks.length)
 
       const chunkContent = chunks[chunkIndex]
-      const chunkFiles = await generateChunkAudio(chunkContent, 0, chunkIndex, apiKey, outputDir)
+      const chunkFiles = await generateChunkAudio(
+        chunkContent,
+        0,
+        chunkIndex,
+        apiKey,
+        outputDir,
+      )
       allChunkFiles.push(...chunkFiles)
     }
 
@@ -310,7 +337,9 @@ export const GenerateAudio = async (
     }
   } catch (error) {
     console.error('Error in audio generation:', error)
-    callbacks?.onProgress?.(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    callbacks?.onProgress?.(
+      `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    )
     throw error
   }
 }
