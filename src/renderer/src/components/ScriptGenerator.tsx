@@ -395,6 +395,7 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({
     try {
       await window.electron.ipcRenderer.invoke('generate-audio', {
         content,
+        sectionIndex,
         apiKey: settings.apiTokens[0],
         outputDir: settings.audioOutputPath,
       })

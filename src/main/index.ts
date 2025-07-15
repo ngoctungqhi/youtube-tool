@@ -140,7 +140,7 @@ ipcMain.handle('generate-script', async (event, requestData) => {
 
 // Add audio generation handler
 ipcMain.handle('generate-audio', async (event, requestData) => {
-  const { content, apiKey, outputDir } = requestData
+  const { content, sectionIndex, apiKey, outputDir } = requestData
 
   const audioProgressCallbacks = {
     onProgress: (message: string) => {
@@ -164,7 +164,13 @@ ipcMain.handle('generate-audio', async (event, requestData) => {
     },
   }
 
-  await GenerateAudio(content, apiKey, outputDir, audioProgressCallbacks)
+  await GenerateAudio(
+    content,
+    sectionIndex,
+    apiKey,
+    outputDir,
+    audioProgressCallbacks,
+  )
 })
 
 // Add image generation handler

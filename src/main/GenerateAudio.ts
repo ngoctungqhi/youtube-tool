@@ -394,6 +394,7 @@ const generateChunkAudio = async (
 
 export const GenerateAudio = async (
   content: string,
+  sectionIndex: number,
   apiKey: string,
   outputDir: string,
   callbacks?: AudioGenerationCallbacks,
@@ -442,7 +443,10 @@ export const GenerateAudio = async (
 
     // Join all chunk files into a single audio file
     if (allChunkFiles.length > 0) {
-      const outputFile = join(outputDir, 'COMPLETE_AUDIO.wav')
+      const outputFile = join(
+        outputDir,
+        `COMPLETE_AUDIO_SECTION_${sectionIndex}.wav`,
+      )
       await joinWavFiles(allChunkFiles, outputFile)
       callbacks?.onSectionComplete?.(0, outputFile)
 
