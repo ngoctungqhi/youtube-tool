@@ -169,7 +169,7 @@ ipcMain.handle('generate-audio', async (event, requestData) => {
 
 // Add image generation handler
 ipcMain.handle('generate-image', async (event, requestData) => {
-  const { prompt, apiKey, outputPath } = requestData
+  const { prompt, sectionIndex, apiKey, outputPath } = requestData
 
   const imageProgressCallback = (
     current: number,
@@ -184,7 +184,13 @@ ipcMain.handle('generate-image', async (event, requestData) => {
     })
   }
 
-  await GenerateImage(prompt, apiKey, outputPath, imageProgressCallback)
+  await GenerateImage(
+    prompt,
+    sectionIndex,
+    apiKey,
+    outputPath,
+    imageProgressCallback,
+  )
 })
 
 // Add folder selection handlers

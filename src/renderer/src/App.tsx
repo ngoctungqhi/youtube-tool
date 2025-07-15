@@ -12,7 +12,10 @@ function App(): React.JSX.Element {
       <ScriptGenerator onOpenSettings={() => setIsSettingsOpen(true)} />
 
       {/* Settings Dialog */}
-      <SettingsDialog isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+      <SettingsDialog
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+      />
     </div>
   )
 }

@@ -12,15 +12,15 @@ export default tseslint.config(
   {
     settings: {
       react: {
-        version: 'detect'
-      }
-    }
+        version: 'detect',
+      },
+    },
   },
   {
     files: ['**/*.{ts,tsx}'],
     plugins: {
       'react-hooks': eslintPluginReactHooks,
-      'react-refresh': eslintPluginReactRefresh
+      'react-refresh': eslintPluginReactRefresh,
     },
     rules: {
       ...eslintPluginReactHooks.configs.recommended.rules,
@@ -28,10 +28,10 @@ export default tseslint.config(
       'prettier/prettier': [
         'error',
         {
-          endOfLine: 'auto'
-        }
-      ]
-    }
+          endOfLine: 'auto',
+        },
+      ],
+    },
   },
-  eslintConfigPrettier
+  eslintConfigPrettier,
 )

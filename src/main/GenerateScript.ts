@@ -112,10 +112,23 @@ export const GenerateScript = async (
           continue
         }
       } catch (error) {
+        const apiError = error as { status?: number; message?: string }
         console.error(`Error generating Section ${sectionCount}:`, error)
-        callbacks?.onProgress?.(
-          `Error generating Section ${sectionCount}. Retrying...`,
-        )
+
+        // Check if it's a 503 service unavailable error
+        if (apiError.status === 503) {
+          callbacks?.onProgress?.(
+            `Service overloaded for Section ${sectionCount}. Waiting 30 seconds before retry...`,
+          )
+          // Wait longer for 503 errors (30 seconds)
+          await new Promise((resolve) => setTimeout(resolve, 30000))
+        } else {
+          callbacks?.onProgress?.(
+            `Error generating Section ${sectionCount}. Retrying in 5 seconds...`,
+          )
+          // Wait 5 seconds for other errors
+          await new Promise((resolve) => setTimeout(resolve, 5000))
+        }
 
         // Remove the failed CONTINUE from history and try again
         conversationHistory.pop()

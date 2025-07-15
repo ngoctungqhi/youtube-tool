@@ -8,7 +8,7 @@ const api = {
     content: string
     apiKey: string
     settings?: { audioOutputPath?: string }
-  }) => electronAPI.ipcRenderer.invoke('generate-audio', requestData)
+  }) => electronAPI.ipcRenderer.invoke('generate-audio', requestData),
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

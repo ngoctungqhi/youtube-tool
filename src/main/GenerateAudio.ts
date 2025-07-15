@@ -3,6 +3,101 @@ import { writeFile, mkdir } from 'fs/promises'
 import { join, dirname } from 'path'
 import { existsSync } from 'fs'
 
+// Rate limiting utility
+class RateLimiter {
+  private requests: number[] = []
+  private readonly maxRequests: number
+  private readonly windowMs: number
+
+  constructor(maxRequests: number = 15, windowMs: number = 60000) {
+    // 15 requests per minute to be safe
+    this.maxRequests = maxRequests
+    this.windowMs = windowMs
+  }
+
+  async waitIfNeeded(): Promise<void> {
+    const now = Date.now()
+
+    // Remove requests older than the window
+    this.requests = this.requests.filter(
+      (timestamp) => now - timestamp < this.windowMs,
+    )
+
+    if (this.requests.length >= this.maxRequests) {
+      // Calculate how long to wait
+      const oldestRequest = Math.min(...this.requests)
+      const waitTime = this.windowMs - (now - oldestRequest) + 1000 // Add 1 second buffer
+
+      if (waitTime > 0) {
+        console.log(
+          `Rate limit reached. Waiting ${Math.ceil(waitTime / 1000)} seconds...`,
+        )
+        await new Promise((resolve) => setTimeout(resolve, waitTime))
+      }
+    }
+
+    this.requests.push(now)
+  }
+}
+
+// Retry utility with exponential backoff
+const retryWithBackoff = async <T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 5,
+  baseDelay: number = 2000,
+): Promise<T> => {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn()
+    } catch (error: unknown) {
+      const apiError = error as { status?: number; details?: unknown[] }
+
+      // Handle 503 service overloaded errors with longer waits
+      if (apiError.status === 503 && attempt < maxRetries) {
+        const retryDelay = Math.min(baseDelay * Math.pow(2, attempt), 120000) // Cap at 2 minutes
+        console.log(
+          `Audio service overloaded (attempt ${attempt + 1}/${maxRetries + 1}). Waiting ${
+            retryDelay / 1000
+          } seconds...`,
+        )
+        await new Promise((resolve) => setTimeout(resolve, retryDelay))
+        continue
+      }
+
+      if (apiError.status === 429 && attempt < maxRetries) {
+        // Extract retry delay from error if available
+        let retryDelay = baseDelay * Math.pow(2, attempt)
+
+        if (apiError.details) {
+          const retryInfo = apiError.details.find(
+            (detail: unknown) =>
+              (detail as { '@type'?: string })['@type'] ===
+              'type.googleapis.com/google.rpc.RetryInfo',
+          ) as { retryDelay?: string } | undefined
+
+          if (retryInfo?.retryDelay) {
+            // Parse retry delay (format: "56s")
+            const delayMatch = retryInfo.retryDelay.match(/(\d+)s/)
+            if (delayMatch) {
+              retryDelay = parseInt(delayMatch[1]) * 1000
+            }
+          }
+        }
+
+        console.log(
+          `Audio rate limit hit (attempt ${attempt + 1}/${maxRetries + 1}). Waiting ${
+            retryDelay / 1000
+          } seconds...`,
+        )
+        await new Promise((resolve) => setTimeout(resolve, retryDelay))
+        continue
+      }
+      throw error
+    }
+  }
+  throw new Error('Max retries exceeded')
+}
+
 interface AudioGenerationCallbacks {
   onProgress?: (message: string) => void
   onChunkGenerated?: (chunkIndex: number, totalChunks: number) => void
@@ -211,6 +306,7 @@ const generateChunkAudio = async (
   chunkIndex: number,
   apiKey: string,
   outputDir: string,
+  rateLimiter: RateLimiter,
 ): Promise<string[]> => {
   const ai = new GoogleGenAI({
     apiKey,
@@ -243,11 +339,21 @@ const generateChunkAudio = async (
   const chunkFiles: string[] = []
   let fileIndex = 0
 
-  const response = await ai.models.generateContentStream({
-    model,
-    config,
-    contents,
-  })
+  // Wait for rate limit before making request
+  await rateLimiter.waitIfNeeded()
+
+  // Use retry logic for audio generation
+  const response = await retryWithBackoff(
+    async () => {
+      return await ai.models.generateContentStream({
+        model,
+        config,
+        contents,
+      })
+    },
+    5, // Increased retries
+    2000, // Increased base delay
+  )
 
   for await (const chunk of response) {
     if (
@@ -280,6 +386,9 @@ const generateChunkAudio = async (
     }
   }
 
+  // Add longer delay between successful requests to be extra safe for audio
+  await new Promise((resolve) => setTimeout(resolve, 3000))
+
   return chunkFiles
 }
 
@@ -291,6 +400,9 @@ export const GenerateAudio = async (
 ): Promise<void> => {
   try {
     callbacks?.onProgress?.('Starting audio generation...')
+
+    // Initialize rate limiter for audio generation
+    const rateLimiter = new RateLimiter(10, 60000) // 10 requests per minute for audio (more conservative)
 
     // Split content into manageable chunks
     const chunks = splitContentIntoChunks(content)
@@ -305,15 +417,27 @@ export const GenerateAudio = async (
       )
       callbacks?.onChunkGenerated?.(chunkIndex + 1, chunks.length)
 
-      const chunkContent = chunks[chunkIndex]
-      const chunkFiles = await generateChunkAudio(
-        chunkContent,
-        0,
-        chunkIndex,
-        apiKey,
-        outputDir,
-      )
-      allChunkFiles.push(...chunkFiles)
+      try {
+        const chunkContent = chunks[chunkIndex]
+        const chunkFiles = await generateChunkAudio(
+          chunkContent,
+          0,
+          chunkIndex,
+          apiKey,
+          outputDir,
+          rateLimiter,
+        )
+        allChunkFiles.push(...chunkFiles)
+      } catch (chunkError) {
+        console.error(
+          `Error generating audio for chunk ${chunkIndex}:`,
+          chunkError,
+        )
+        callbacks?.onProgress?.(
+          `Warning: Failed to generate audio for chunk ${chunkIndex + 1}. Continuing with remaining chunks...`,
+        )
+        // Continue with other chunks even if one fails
+      }
     }
 
     // Join all chunk files into a single audio file
@@ -334,6 +458,8 @@ export const GenerateAudio = async (
       }
 
       callbacks?.onProgress?.('Audio generation completed successfully!')
+    } else {
+      throw new Error('No audio chunks were successfully generated.')
     }
   } catch (error) {
     console.error('Error in audio generation:', error)

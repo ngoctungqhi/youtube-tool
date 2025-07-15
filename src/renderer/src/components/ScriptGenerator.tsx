@@ -2,13 +2,23 @@ import React, { useState, useEffect } from 'react'
 import { Settings, Loader2, CheckCircle, Clock } from 'lucide-react'
 
 interface ProgressData {
-  type: 'progress' | 'outline' | 'section' | 'audio-progress' | 'image-progress'
+  type:
+    | 'progress'
+    | 'outline'
+    | 'section'
+    | 'audio-progress'
+    | 'image-progress'
+    | 'error'
+    | 'retry'
   message?: string
   content?: string
   sectionNumber?: number
   chunkIndex?: number
   totalChunks?: number
   outputPath?: string
+  errorType?: '503' | '429' | 'general'
+  retryAttempt?: number
+  maxRetries?: number
 }
 
 interface ScriptGeneratorProps {
@@ -32,11 +42,27 @@ interface ProgressState {
   imageProgress: { current: number; total: number; message: string }
 }
 
+interface LoadingState {
+  isGeneratingScript: boolean
+  isGeneratingImages: boolean
+  isGeneratingAudio: boolean
+}
+
+interface NotificationState {
+  show: boolean
+  type: 'info' | 'warning' | 'error'
+  message: string
+}
+
 const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({
   onOpenSettings,
 }) => {
   const [topic, setTopic] = useState('')
-  const [isGenerating, setIsGenerating] = useState(false)
+  const [loadingState, setLoadingState] = useState<LoadingState>({
+    isGeneratingScript: false,
+    isGeneratingImages: false,
+    isGeneratingAudio: false,
+  })
   const [audioFiles, setAudioFiles] = useState<string[]>([])
   const [imageFiles, setImageFiles] = useState<string[]>([])
   const [progressState, setProgressState] = useState<ProgressState>({
@@ -47,6 +73,23 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({
     audioProgress: { current: 0, total: 0, message: '' },
     imageProgress: { current: 0, total: 0, message: '' },
   })
+  const [notification, setNotification] = useState<NotificationState>({
+    show: false,
+    type: 'info',
+    message: '',
+  })
+
+  // Auto-hide notification after 5 seconds
+  useEffect(() => {
+    if (notification.show) {
+      const timer = setTimeout(() => {
+        setNotification((prev) => ({ ...prev, show: false }))
+      }, 5000)
+      return () => clearTimeout(timer)
+    }
+    return undefined
+  }, [notification.show])
+
   useEffect(() => {
     // Listen for progress events from the main process
     const handleProgress = (_event: unknown, data: ProgressData): void => {
@@ -89,6 +132,32 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({
               message: data.message || '',
             },
           }))
+          break
+        case 'error':
+          if (data.errorType === '503') {
+            setNotification({
+              show: true,
+              type: 'warning',
+              message:
+                'Google AI service is overloaded. The system will automatically retry...',
+            })
+          } else if (data.errorType === '429') {
+            setNotification({
+              show: true,
+              type: 'warning',
+              message:
+                'Rate limit reached. The system will automatically retry...',
+            })
+          }
+          break
+        case 'retry':
+          if (data.retryAttempt && data.maxRetries) {
+            setNotification({
+              show: true,
+              type: 'info',
+              message: `Retrying... (${data.retryAttempt}/${data.maxRetries})`,
+            })
+          }
           break
       }
     }
@@ -173,7 +242,12 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({
       return
     }
 
-    setIsGenerating(true)
+    // Reset all states
+    setLoadingState({
+      isGeneratingScript: true,
+      isGeneratingImages: false,
+      isGeneratingAudio: false,
+    })
     setProgressState({
       currentMessage: 'Starting script generation...',
       outline: '',
@@ -182,72 +256,130 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({
       audioProgress: { current: 0, total: 0, message: '' },
       imageProgress: { current: 0, total: 0, message: '' },
     })
+    setAudioFiles([])
+    setImageFiles([])
 
     try {
-      // Replace placeholders
+      // Step 1: Generate Script
+      setProgressState((prev) => ({
+        ...prev,
+        currentMessage: 'Generating script content...',
+      }))
+
       const prompt = settings.scriptPromptTemplate.replace(/\[TOPIC\]/g, topic)
       const script = await window.electron.ipcRenderer.invoke(
         'generate-script',
         {
           prompt,
-          apiKey: settings.apiTokens[0], // Use the first token for simplicity
+          apiKey: settings.apiTokens[0],
         },
       )
 
       const splitScripts = script.split('\n\n\n')
 
-      // Set up progress tracking
-      const totalSections = splitScripts.length
       setProgressState((prev) => ({
         ...prev,
-        audioProgress: {
-          current: 0,
-          total: totalSections,
-          message: 'Starting audio generation...',
-        },
-        imageProgress: {
-          current: 0,
-          total: totalSections,
-          message: 'Starting image generation...',
-        },
+        currentMessage:
+          'Script generation completed! Starting image generation...',
       }))
 
-      // Process all sections in parallel for better performance
-      const sectionPromises = splitScripts.map(async (section, index) => {
-        // Remove Section x from section content
+      // Step 2: Generate Images sequentially
+      setLoadingState({
+        isGeneratingScript: false,
+        isGeneratingImages: true,
+        isGeneratingAudio: false,
+      })
+
+      for (let i = 0; i < splitScripts.length; i++) {
+        const section = splitScripts[i]
         const cleanedSection = section
           .replace(/^Section\s+\d+\s*\n?/i, '')
           .trim()
 
-        // Run image and audio generation in parallel for each section
-        const [,] = await Promise.all([
-          generateImage(cleanedSection, index + 1, totalSections),
-          generateAudio(cleanedSection, index + 1, totalSections),
-        ])
+        setProgressState((prev) => ({
+          ...prev,
+          currentMessage: `Generating images for section ${i + 1}/${splitScripts.length}...`,
+          imageProgress: {
+            current: i,
+            total: splitScripts.length,
+            message: `Processing section ${i + 1}/${splitScripts.length}`,
+          },
+        }))
+
+        await generateImage(cleanedSection, i + 1, splitScripts.length)
+        // Final refresh to ensure all files are displayed
+        await refreshFiles()
+      }
+
+      setProgressState((prev) => ({
+        ...prev,
+        currentMessage:
+          'Image generation completed! Starting audio generation...',
+      }))
+
+      // Step 3: Generate Audio sequentially
+      setLoadingState({
+        isGeneratingScript: false,
+        isGeneratingImages: false,
+        isGeneratingAudio: true,
       })
 
-      // Wait for all sections to complete
-      await Promise.all(sectionPromises)
-      setProgressState((prev) => ({
-        ...prev,
-        currentMessage: 'Script generation completed!',
-      }))
+      for (let i = 0; i < splitScripts.length; i++) {
+        const section = splitScripts[i]
+        const cleanedSection = section
+          .replace(/^Section\s+\d+\s*\n?/i, '')
+          .trim()
 
-      // Final refresh to ensure all files are displayed
-      await refreshFiles()
-    } catch (error) {
-      console.error('Script generation error:', error)
-      alert(
-        `Error generating script: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      )
+        setProgressState((prev) => ({
+          ...prev,
+          currentMessage: `Generating audio for section ${i + 1}/${splitScripts.length}...`,
+          audioProgress: {
+            current: i,
+            total: splitScripts.length,
+            message: `Processing section ${i + 1}/${splitScripts.length}`,
+          },
+        }))
+
+        await generateAudio(cleanedSection, i + 1, splitScripts.length)
+        // Final refresh to ensure all files are displayed
+        await refreshFiles()
+      }
+
       setProgressState((prev) => ({
         ...prev,
-        currentMessage: 'Error occurred during generation',
+        currentMessage: 'All content generation completed successfully!',
+      }))
+    } catch (error) {
+      console.error('Content generation error:', error)
+
+      // Handle specific error types
+      const apiError = error as { status?: number; message?: string }
+      let errorMessage = 'Unknown error'
+
+      if (apiError.status === 503) {
+        errorMessage =
+          'Google AI service is currently overloaded. Please try again in a few minutes.'
+      } else if (apiError.status === 429) {
+        errorMessage =
+          'Rate limit exceeded. Please wait a moment and try again.'
+      } else if (error instanceof Error) {
+        errorMessage = error.message
+      }
+
+      alert(`Error generating content: ${errorMessage}`)
+      setProgressState((prev) => ({
+        ...prev,
+        currentMessage: `Error: ${errorMessage}`,
       }))
     } finally {
-      setIsGenerating(false)
+      setLoadingState({
+        isGeneratingScript: false,
+        isGeneratingImages: false,
+        isGeneratingAudio: false,
+      })
     }
   }
+
   const generateAudio = async (
     content: string,
     sectionIndex?: number,
@@ -261,18 +393,6 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({
     }
 
     try {
-      // Update progress
-      if (sectionIndex && totalSections) {
-        setProgressState((prev) => ({
-          ...prev,
-          audioProgress: {
-            current: sectionIndex,
-            total: totalSections,
-            message: `Generating audio for section ${sectionIndex}/${totalSections}`,
-          },
-        }))
-      }
-
       await window.electron.ipcRenderer.invoke('generate-audio', {
         content,
         apiKey: settings.apiTokens[0],
@@ -295,11 +415,26 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({
       }
     } catch (error) {
       console.error('Audio generation error:', error)
-      alert(
-        `Error generating audio: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      )
+
+      // Handle specific error types for audio generation
+      const apiError = error as { status?: number; message?: string }
+      let errorMessage = 'Unknown error'
+
+      if (apiError.status === 503) {
+        errorMessage =
+          'Audio service is overloaded. The system will automatically retry.'
+      } else if (apiError.status === 429) {
+        errorMessage =
+          'Audio rate limit exceeded. The system will automatically retry.'
+      } else if (error instanceof Error) {
+        errorMessage = error.message
+      }
+
+      console.warn(`Audio generation warning: ${errorMessage}`)
+      // Don't show alert for audio errors, just log them
     }
   }
+
   const generateImage = async (
     content: string,
     sectionIndex?: number,
@@ -319,24 +454,13 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({
     }
 
     try {
-      // Update progress
-      if (sectionIndex && totalSections) {
-        setProgressState((prev) => ({
-          ...prev,
-          imageProgress: {
-            current: sectionIndex,
-            total: totalSections,
-            message: `Generating images for section ${sectionIndex}/${totalSections}`,
-          },
-        }))
-      }
-
       const prompt = settings.imagePromptTemplate.replace(
         /\[Replace Script\]/g,
         content.trim(),
       )
       await window.electron.ipcRenderer.invoke('generate-image', {
         prompt,
+        sectionIndex,
         apiKey:
           settings.apiTokens.length > 1
             ? settings.apiTokens[1]
@@ -360,11 +484,31 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({
       }
     } catch (error) {
       console.error('Image generation error:', error)
-      alert(
-        `Error generating images: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      )
+
+      // Handle specific error types for image generation
+      const apiError = error as { status?: number; message?: string }
+      let errorMessage = 'Unknown error'
+
+      if (apiError.status === 503) {
+        errorMessage =
+          'Image service is overloaded. The system will automatically retry.'
+      } else if (apiError.status === 429) {
+        errorMessage =
+          'Image rate limit exceeded. The system will automatically retry.'
+      } else if (error instanceof Error) {
+        errorMessage = error.message
+      }
+
+      console.warn(`Image generation warning: ${errorMessage}`)
+      // Don't show alert for image errors, just log them
     }
   }
+
+  // Helper function to check if any generation is in progress
+  const isAnyGenerating =
+    loadingState.isGeneratingScript ||
+    loadingState.isGeneratingImages ||
+    loadingState.isGeneratingAudio
 
   return (
     <div className="flex flex-col h-screen w-screen p-6">
@@ -391,29 +535,49 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({
             onChange={(e) => setTopic(e.target.value)}
             className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             placeholder="Enter your video topic..."
-            disabled={isGenerating}
+            disabled={isAnyGenerating}
           />
 
           <button
             onClick={handleGenerate}
-            disabled={isGenerating || !topic.trim()}
+            disabled={isAnyGenerating || !topic.trim()}
             className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
           >
-            {isGenerating && <Loader2 className="w-5 h-5 animate-spin" />}
-            {isGenerating ? 'Generating...' : 'Generate Elements'}
+            {isAnyGenerating && <Loader2 className="w-5 h-5 animate-spin" />}
+            {isAnyGenerating ? 'Generating...' : 'Generate Elements'}
           </button>
         </div>
       </div>
 
       {/* Output Section */}
       <div className="bg-white rounded-lg shadow-md p-6 flex-1 overflow-hidden">
+        {/* Notification */}
+        {notification.show && (
+          <div
+            className={`mb-4 p-3 rounded-lg border ${
+              notification.type === 'error'
+                ? 'bg-red-50 border-red-200 text-red-700'
+                : notification.type === 'warning'
+                  ? 'bg-yellow-50 border-yellow-200 text-yellow-700'
+                  : 'bg-blue-50 border-blue-200 text-blue-700'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4" />
+              <span className="text-sm">{notification.message}</span>
+            </div>
+          </div>
+        )}
+
         {/* Progress Display */}
-        {isGenerating && (
+        {isAnyGenerating && (
           <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
             <div className="flex items-center gap-3 mb-3">
               <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
               <span className="font-medium text-blue-800">
-                Generating Script
+                {loadingState.isGeneratingScript && 'Generating Script'}
+                {loadingState.isGeneratingImages && 'Generating Images'}
+                {loadingState.isGeneratingAudio && 'Generating Audio'}
               </span>
             </div>
             {progressState.currentMessage && (
@@ -430,7 +594,7 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({
                   </span>
                 </div>
               </div>
-            )}{' '}
+            )}
             {progressState.sections.length > 0 && (
               <div className="mb-4">
                 <div className="flex items-center gap-2 mb-2">
@@ -449,71 +613,81 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({
                 </div>
               </div>
             )}
-            {/* Audio Generation Progress */}
-            {progressState.audioProgress.total > 0 && (
-              <div className="mb-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Clock className="w-4 h-4 text-purple-500" />
-                  <span className="text-sm font-medium text-purple-700">
-                    Audio: {progressState.audioProgress.current}/
-                    {progressState.audioProgress.total}
-                  </span>
-                </div>
-                {progressState.audioProgress.message && (
-                  <p className="text-xs text-purple-600 mb-2">
-                    {progressState.audioProgress.message}
-                  </p>
-                )}
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className="bg-purple-600 h-2 rounded-full transition-all duration-300"
-                    style={{
-                      width: `${(progressState.audioProgress.current / progressState.audioProgress.total) * 100}%`,
-                    }}
-                  ></div>
-                </div>
-              </div>
-            )}
             {/* Image Generation Progress */}
-            {progressState.imageProgress.total > 0 && (
-              <div className="mb-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Clock className="w-4 h-4 text-green-500" />
-                  <span className="text-sm font-medium text-green-700">
-                    Images: {progressState.imageProgress.current}/
-                    {progressState.imageProgress.total}
-                  </span>
+            {loadingState.isGeneratingImages &&
+              progressState.imageProgress.total > 0 && (
+                <div className="mb-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Clock className="w-4 h-4 text-green-500" />
+                    <span className="text-sm font-medium text-green-700">
+                      Images: {progressState.imageProgress.current}/
+                      {progressState.imageProgress.total}
+                    </span>
+                  </div>
+                  {progressState.imageProgress.message && (
+                    <p className="text-xs text-green-600 mb-2">
+                      {progressState.imageProgress.message}
+                    </p>
+                  )}
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-green-600 h-2 rounded-full transition-all duration-300"
+                      style={{
+                        width: `${(progressState.imageProgress.current / progressState.imageProgress.total) * 100}%`,
+                      }}
+                    ></div>
+                  </div>
                 </div>
-                {progressState.imageProgress.message && (
-                  <p className="text-xs text-green-600 mb-2">
-                    {progressState.imageProgress.message}
-                  </p>
-                )}
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className="bg-green-600 h-2 rounded-full transition-all duration-300"
-                    style={{
-                      width: `${(progressState.imageProgress.current / progressState.imageProgress.total) * 100}%`,
-                    }}
-                  ></div>
+              )}
+            {/* Audio Generation Progress */}
+            {loadingState.isGeneratingAudio &&
+              progressState.audioProgress.total > 0 && (
+                <div className="mb-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Clock className="w-4 h-4 text-purple-500" />
+                    <span className="text-sm font-medium text-purple-700">
+                      Audio: {progressState.audioProgress.current}/
+                      {progressState.audioProgress.total}
+                    </span>
+                  </div>
+                  {progressState.audioProgress.message && (
+                    <p className="text-xs text-purple-600 mb-2">
+                      {progressState.audioProgress.message}
+                    </p>
+                  )}
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-purple-600 h-2 rounded-full transition-all duration-300"
+                      style={{
+                        width: `${(progressState.audioProgress.current / progressState.audioProgress.total) * 100}%`,
+                      }}
+                    ></div>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
           </div>
         )}
 
         <div className="flex gap-3 overflow-hidden h-full">
           {/* Audio File Display */}
           <div className="w-1/3 flex flex-col">
-            <h3 className="text-lg font-semibold text-gray-800 mb-2">
-              Generated Audio
-            </h3>
-            {isGenerating ? (
-              <div className="text-center text-gray-500">
-                <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
-                <p>Generating audio file...</p>
-              </div>
-            ) : audioFiles.length > 0 ? (
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-lg font-semibold text-gray-800">
+                Generated Audio
+              </h3>
+              <button
+                onClick={refreshFiles}
+                className="text-sm text-blue-600 hover:underline"
+              >
+                Refresh Audio
+              </button>
+            </div>
+
+            {audioFiles.length === 0 && (
+              <p className="text-gray-500">No audio files generated yet.</p>
+            )}
+
+            {audioFiles.length > 0 && (
               <div className="flex-1 grid grid-cols-1 gap-3 overflow-y-auto">
                 {audioFiles.map((audioFile) => (
                   <audio controls className="w-full max-w-md" key={audioFile}>
@@ -522,22 +696,35 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({
                   </audio>
                 ))}
               </div>
-            ) : (
-              <p className="text-gray-500">No audio file generated yet.</p>
+            )}
+
+            {loadingState.isGeneratingAudio && (
+              <div className="text-center text-gray-500">
+                <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
+                <p>Generating audio files...</p>
+              </div>
             )}
           </div>
 
           {/* Image File Display */}
           <div className="flex flex-col flex-1">
-            <h3 className="text-lg font-semibold text-gray-800 mb-2">
-              Generated Images
-            </h3>
-            {isGenerating ? (
-              <div className="text-center text-gray-500">
-                <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
-                <p>Generating images...</p>
-              </div>
-            ) : imageFiles.length > 0 ? (
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-lg font-semibold text-gray-800">
+                Generated Images
+              </h3>
+              <button
+                onClick={refreshFiles}
+                className="text-sm text-blue-600 hover:underline"
+              >
+                Refresh Images
+              </button>
+            </div>
+
+            {imageFiles.length === 0 && (
+              <p className="text-gray-500">No images generated yet.</p>
+            )}
+
+            {imageFiles.length > 0 && (
               <div className="flex-1 grid grid-cols-3 gap-3 overflow-y-auto">
                 {imageFiles.map((imageFile) => (
                   <img
@@ -548,8 +735,13 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({
                   />
                 ))}
               </div>
-            ) : (
-              <p className="text-gray-500">No images generated yet.</p>
+            )}
+
+            {loadingState.isGeneratingImages && (
+              <div className="text-center text-gray-500">
+                <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
+                <p>Generating images...</p>
+              </div>
             )}
           </div>
         </div>
