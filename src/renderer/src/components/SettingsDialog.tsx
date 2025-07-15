@@ -14,7 +14,10 @@ interface SettingsData {
   imageOutputPath: string
 }
 
+type TabType = 'apiToken' | 'scriptTemplate' | 'imageTemplate' | 'outputPaths'
+
 const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose }) => {
+  const [activeTab, setActiveTab] = useState<TabType>('apiToken')
   const [settings, setSettings] = useState<SettingsData>({
     apiTokens: [],
     scriptPromptTemplate: '',
@@ -93,21 +96,17 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose }) => {
 
   if (!isOpen) return null
 
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-lg w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-6 border-b">
-          <h2 className="text-xl font-semibold text-gray-800">Settings</h2>
-          <button
-            onClick={handleClose}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+  const tabs = [
+    { id: 'apiToken' as TabType, label: 'API Token' },
+    { id: 'scriptTemplate' as TabType, label: 'Script Template' },
+    { id: 'imageTemplate' as TabType, label: 'Image Template' },
+    { id: 'outputPaths' as TabType, label: 'Output Paths' },
+  ]
 
-        <div className="p-6 space-y-6">
-          {/* AI API Token */}
+  const renderTabContent = (): React.JSX.Element | null => {
+    switch (activeTab) {
+      case 'apiToken':
+        return (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               AI API Token
@@ -119,7 +118,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose }) => {
                   : ''
               }
               onChange={(e) => handleInputChange('apiTokens', e.target.value)}
-              rows={3}
+              rows={5}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-vertical"
               placeholder="Enter your AI API token...
 
@@ -129,8 +128,10 @@ You can enter multiple tokens on separate lines if needed."
               This token will be used to authenticate with AI services
             </p>
           </div>
+        )
 
-          {/* Script Prompt Template */}
+      case 'scriptTemplate':
+        return (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Script Prompt Template
@@ -140,7 +141,7 @@ You can enter multiple tokens on separate lines if needed."
               onChange={(e) =>
                 handleInputChange('scriptPromptTemplate', e.target.value)
               }
-              rows={6}
+              rows={14}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-vertical"
               placeholder="Enter your script generation prompt template...
 
@@ -151,8 +152,10 @@ Target audience: {audience}
 Duration: {duration} minutes"
             />
           </div>
+        )
 
-          {/* Image Prompt Template */}
+      case 'imageTemplate':
+        return (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Image Prompt Template
@@ -162,7 +165,7 @@ Duration: {duration} minutes"
               onChange={(e) =>
                 handleInputChange('imagePromptTemplate', e.target.value)
               }
-              rows={4}
+              rows={14}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-vertical"
               placeholder="Enter your image generation prompt template...
 
@@ -172,65 +175,110 @@ Style: modern, eye-catching, high contrast
 Include text overlay with: {title}"
             />
           </div>
+        )
 
-          {/* Audio Output Path */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Audio Output Path
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={settings.audioOutputPath}
-                onChange={(e) =>
-                  handleInputChange('audioOutputPath', e.target.value)
-                }
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Enter the path where audio files will be saved..."
-              />
-              <button
-                type="button"
-                onClick={() => handleSelectFolder('audioOutputPath')}
-                className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200 transition-colors"
-              >
-                <Folder className="w-4 h-4" />
-                Browse
-              </button>
+      case 'outputPaths':
+        return (
+          <div className="space-y-6">
+            {/* Audio Output Path */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Audio Output Path
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={settings.audioOutputPath}
+                  onChange={(e) =>
+                    handleInputChange('audioOutputPath', e.target.value)
+                  }
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Enter the path where audio files will be saved..."
+                />
+                <button
+                  type="button"
+                  onClick={() => handleSelectFolder('audioOutputPath')}
+                  className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200 transition-colors"
+                >
+                  <Folder className="w-4 h-4" />
+                  Browse
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Specify the directory where generated audio files will be saved
+              </p>
             </div>
-            <p className="text-xs text-gray-500 mt-1">
-              Specify the directory where generated audio files will be saved
-            </p>
-          </div>
 
-          {/* Image Output Path */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Image Output Path
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={settings.imageOutputPath}
-                onChange={(e) =>
-                  handleInputChange('imageOutputPath', e.target.value)
-                }
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Enter the path where image files will be saved..."
-              />
-              <button
-                type="button"
-                onClick={() => handleSelectFolder('imageOutputPath')}
-                className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200 transition-colors"
-              >
-                <Folder className="w-4 h-4" />
-                Browse
-              </button>
+            {/* Image Output Path */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Image Output Path
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={settings.imageOutputPath}
+                  onChange={(e) =>
+                    handleInputChange('imageOutputPath', e.target.value)
+                  }
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Enter the path where image files will be saved..."
+                />
+                <button
+                  type="button"
+                  onClick={() => handleSelectFolder('imageOutputPath')}
+                  className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200 transition-colors"
+                >
+                  <Folder className="w-4 h-4" />
+                  Browse
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Specify the directory where generated images will be saved
+              </p>
             </div>
-            <p className="text-xs text-gray-500 mt-1">
-              Specify the directory where generated images will be saved
-            </p>
           </div>
+        )
+
+      default:
+        return null
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-lg w-full max-w-3xl mx-4 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-6 border-b">
+          <h2 className="text-xl font-semibold text-gray-800">Settings</h2>
+          <button
+            onClick={handleClose}
+            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
+
+        {/* Tab Navigation */}
+        <div className="border-b">
+          <nav className="flex space-x-0">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === tab.id
+                    ? 'border-blue-500 text-blue-600 bg-blue-50'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        {/* Tab Content */}
+        <div className="p-6">{renderTabContent()}</div>
 
         <div className="flex items-center justify-end gap-3 p-6 border-t bg-gray-50">
           <button
