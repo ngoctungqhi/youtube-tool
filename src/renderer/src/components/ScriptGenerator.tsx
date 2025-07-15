@@ -550,7 +550,7 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({
       </div>
 
       {/* Output Section */}
-      <div className="bg-white rounded-lg shadow-md p-6 flex-1 overflow-hidden">
+      <div className="bg-white flex flex-col rounded-lg shadow-md p-6 flex-1 overflow-hidden">
         {/* Notification */}
         {notification.show && (
           <div
