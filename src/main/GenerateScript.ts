@@ -1,4 +1,6 @@
 import { GoogleGenAI } from '@google/genai'
+import * as fs from 'fs'
+import * as path from 'path'
 
 interface GenerationProgress {
   onProgress?: (message: string) => void
@@ -9,6 +11,7 @@ interface GenerationProgress {
 export const GenerateScript = async (
   prompt: string,
   apiKey: string,
+  outputPath: string,
   callbacks?: GenerationProgress,
 ): Promise<string> => {
   try {
@@ -48,6 +51,14 @@ export const GenerateScript = async (
     const outline = outlineResponse.candidates[0].content.parts[0].text.trim()
 
     callbacks?.onOutlineGenerated?.(outline)
+
+    // Save outline to file
+    const scriptFilePath = path.join(outputPath, 'script.txt')
+    fs.writeFileSync(
+      scriptFilePath,
+      `OUTLINE:\n${outline}\n\n--- SCRIPT ---\n\n`,
+      'utf8',
+    )
 
     // Initialize conversation history and script
     const conversationHistory = [
@@ -96,6 +107,9 @@ export const GenerateScript = async (
             parts: [{ text: sectionContent }],
           })
 
+          // Append section to file
+          fs.appendFileSync(scriptFilePath, sectionContent + '\n\n\n', 'utf8')
+
           callbacks?.onSectionGenerated?.(sectionCount, sectionContent)
           sectionCount++
 
@@ -139,7 +153,7 @@ export const GenerateScript = async (
     // Save the complete script to file
     try {
       callbacks?.onProgress?.(
-        `Script saved with ${sectionCount - 1} sections completed.`,
+        `Script saved to ${scriptFilePath} with ${sectionCount - 1} sections completed.`,
       )
       return fullScript.trim()
     } catch (error) {

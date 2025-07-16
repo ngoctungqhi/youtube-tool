@@ -42,11 +42,11 @@ function createWindow(): void {
 
   // HMR for renderer base on electron-vite cli.
   // Load the remote URL for development or the local html file for production.
-  // if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-  //   mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  // } else {
-  mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
-  // }
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+  } else {
+    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+  }
 }
 
 protocol.registerSchemesAsPrivileged([
@@ -112,8 +112,7 @@ app.on('window-all-closed', () => {
 
 // Add Gemini API handler
 ipcMain.handle('generate-script', async (event, requestData) => {
-  const { prompt, apiKey } = requestData
-
+  const { prompt, apiKey, outputPath } = requestData
   const progressCallbacks = {
     onProgress: (message: string) => {
       event.sender.send('script-progress', { type: 'progress', message })
@@ -133,7 +132,12 @@ ipcMain.handle('generate-script', async (event, requestData) => {
     },
   }
 
-  const generatedText = await GenerateScript(prompt, apiKey, progressCallbacks)
+  const generatedText = await GenerateScript(
+    prompt,
+    apiKey,
+    outputPath,
+    progressCallbacks,
+  )
 
   return generatedText
 })

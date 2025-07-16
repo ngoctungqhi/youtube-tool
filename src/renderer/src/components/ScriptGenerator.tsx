@@ -267,88 +267,90 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({
       }))
 
       const prompt = settings.scriptPromptTemplate.replace(/\[TOPIC\]/g, topic)
+      console.log(settings)
       const script = await window.electron.ipcRenderer.invoke(
         'generate-script',
         {
           prompt,
           apiKey: settings.apiTokens[0],
+          outputPath: settings.audioOutputPath,
         },
       )
 
-      const splitScripts = script.split('\n\n\n')
+      // const splitScripts = script.split('\n\n\n')
 
-      setProgressState((prev) => ({
-        ...prev,
-        currentMessage:
-          'Script generation completed! Starting image generation...',
-      }))
+      // setProgressState((prev) => ({
+      //   ...prev,
+      //   currentMessage:
+      //     'Script generation completed! Starting image generation...',
+      // }))
 
-      // Step 2: Generate Images sequentially
-      setLoadingState({
-        isGeneratingScript: false,
-        isGeneratingImages: true,
-        isGeneratingAudio: false,
-      })
+      // // Step 2: Generate Images sequentially
+      // setLoadingState({
+      //   isGeneratingScript: false,
+      //   isGeneratingImages: true,
+      //   isGeneratingAudio: false,
+      // })
 
-      for (let i = 0; i < splitScripts.length; i++) {
-        const section = splitScripts[i]
-        const cleanedSection = section
-          .replace(/^Section\s+\d+\s*\n?/i, '')
-          .trim()
+      // for (let i = 0; i < splitScripts.length; i++) {
+      //   const section = splitScripts[i]
+      //   const cleanedSection = section
+      //     .replace(/^Section\s+\d+\s*\n?/i, '')
+      //     .trim()
 
-        setProgressState((prev) => ({
-          ...prev,
-          currentMessage: `Generating images for section ${i + 1}/${splitScripts.length}...`,
-          imageProgress: {
-            current: i,
-            total: splitScripts.length,
-            message: `Processing section ${i + 1}/${splitScripts.length}`,
-          },
-        }))
+      //   setProgressState((prev) => ({
+      //     ...prev,
+      //     currentMessage: `Generating images for section ${i + 1}/${splitScripts.length}...`,
+      //     imageProgress: {
+      //       current: i,
+      //       total: splitScripts.length,
+      //       message: `Processing section ${i + 1}/${splitScripts.length}`,
+      //     },
+      //   }))
 
-        await generateImage(cleanedSection, i + 1, splitScripts.length)
-        // Final refresh to ensure all files are displayed
-        await refreshFiles()
-      }
+      //   await generateImage(cleanedSection, i + 1, splitScripts.length)
+      //   // Final refresh to ensure all files are displayed
+      //   await refreshFiles()
+      // }
 
-      setProgressState((prev) => ({
-        ...prev,
-        currentMessage:
-          'Image generation completed! Starting audio generation...',
-      }))
+      // setProgressState((prev) => ({
+      //   ...prev,
+      //   currentMessage:
+      //     'Image generation completed! Starting audio generation...',
+      // }))
 
-      // Step 3: Generate Audio sequentially
-      setLoadingState({
-        isGeneratingScript: false,
-        isGeneratingImages: false,
-        isGeneratingAudio: true,
-      })
+      // // Step 3: Generate Audio sequentially
+      // setLoadingState({
+      //   isGeneratingScript: false,
+      //   isGeneratingImages: false,
+      //   isGeneratingAudio: true,
+      // })
 
-      for (let i = 0; i < splitScripts.length; i++) {
-        const section = splitScripts[i]
-        const cleanedSection = section
-          .replace(/^Section\s+\d+\s*\n?/i, '')
-          .trim()
+      // for (let i = 0; i < splitScripts.length; i++) {
+      //   const section = splitScripts[i]
+      //   const cleanedSection = section
+      //     .replace(/^Section\s+\d+\s*\n?/i, '')
+      //     .trim()
 
-        setProgressState((prev) => ({
-          ...prev,
-          currentMessage: `Generating audio for section ${i + 1}/${splitScripts.length}...`,
-          audioProgress: {
-            current: i,
-            total: splitScripts.length,
-            message: `Processing section ${i + 1}/${splitScripts.length}`,
-          },
-        }))
+      //   setProgressState((prev) => ({
+      //     ...prev,
+      //     currentMessage: `Generating audio for section ${i + 1}/${splitScripts.length}...`,
+      //     audioProgress: {
+      //       current: i,
+      //       total: splitScripts.length,
+      //       message: `Processing section ${i + 1}/${splitScripts.length}`,
+      //     },
+      //   }))
 
-        await generateAudio(cleanedSection, i + 1, splitScripts.length)
-        // Final refresh to ensure all files are displayed
-        await refreshFiles()
-      }
+      //   await generateAudio(cleanedSection, i + 1, splitScripts.length)
+      //   // Final refresh to ensure all files are displayed
+      //   await refreshFiles()
+      // }
 
-      setProgressState((prev) => ({
-        ...prev,
-        currentMessage: 'All content generation completed successfully!',
-      }))
+      // setProgressState((prev) => ({
+      //   ...prev,
+      //   currentMessage: 'All content generation completed successfully!',
+      // }))
     } catch (error) {
       console.error('Content generation error:', error)
 
